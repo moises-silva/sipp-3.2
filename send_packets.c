@@ -121,7 +121,7 @@ void send_packets_cleanup(void *arg)
   close(sock);
 }
 
-
+#define UDP_PRINTS 5
 int
 send_packets (play_args_t * play_args)
 {
@@ -139,6 +139,7 @@ send_packets (play_args_t * play_args)
   struct sockaddr_in6 to6, from6;
   char buffer[PCAP_MAXPACKET];
   int temp_sum;
+  int print_cnt = 0;
 
 #ifndef MSG_DONTWAIT
   int fd_flags;
@@ -187,12 +188,30 @@ send_packets (play_args_t * play_args)
   pthread_cleanup_push(send_packets_cleanup, ((void *) sock));
 
 
+  if (*from_port == 0) {
+	  ERROR("Missing from PlayPcap UDP port, use [media_port] or [auto_media_port] keywords plz\n");
+  }
+  WARNING("Created raw socket %d with from_port=%d, to_port=%d, pkts=%u, udp->uh_dport=%d, pkts->base=%d\n",
+		  sock, *from_port, *to_port, (pkt_max - pkt_index), ntohs(udp->uh_dport), pkts->base);
   while (pkt_index < pkt_max) {
     memcpy(udp, pkt_index->data, pkt_index->pktlen);
     port_diff = ntohs (udp->uh_dport) - pkts->base;
+#if 0
+    if (print_cnt < UDP_PRINTS) {
+	  WARNING("%d: Calculating UDP ports, pkt_index->pktlen=%d, dport=%d, pkts->base=%d, port_diff=%d, from_port=%d, to_port=%d\n",
+			  print_cnt, pkt_index->pktlen, ntohs(udp->uh_dport), pkts->base, port_diff, *from_port, *to_port);
+    }
+#endif
     // modify UDP ports
     udp->uh_sport = htons(port_diff + *from_port);
     udp->uh_dport = htons(port_diff + *to_port);
+
+#if 0
+    if (print_cnt < UDP_PRINTS) {
+	  WARNING("%d: Sending UDP sport=%d, dport=%d, pkts->base=%d, port_diff=%d\n",
+			  print_cnt, ntohs(udp->uh_sport), ntohs(udp->uh_dport), pkts->base, port_diff);
+    }
+#endif
 
     if (!media_ip_is_ipv6) {
       temp_sum = checksum_carry(pkt_index->partial_check + check((u_int16_t *) &(((struct sockaddr_in *)(void *) from)->sin_addr.s_addr), 4) + check((u_int16_t *) &(((struct sockaddr_in *)(void *) to)->sin_addr.s_addr), 4) + check((u_int16_t *) &udp->uh_sport, 4));
@@ -215,8 +234,36 @@ send_packets (play_args_t * play_args)
 		&start);
 #ifdef MSG_DONTWAIT
     if (!media_ip_is_ipv6) {
+      short sport = 0;
+      short dport = 0;
+      sport = (((struct sockaddr_in *)(void *) from )->sin_port);
+      dport = (((struct sockaddr_in *)(void *) to )->sin_port);
+#if 0
+      if (print_cnt < UDP_PRINTS) {
+      	WARNING("sendto socket %d, sport=%d, dport=%d, udp->sport=%d, udp->dport=%d\n",
+			sock, sport, dport, ntohs(udp->uh_sport), ntohs(udp->uh_dport));
+      }
+#endif
       ret = sendto(sock, buffer, pkt_index->pktlen, MSG_DONTWAIT,
                    (struct sockaddr *)(void *) to, sizeof(struct sockaddr_in));
+#if 0
+      if (print_cnt < UDP_PRINTS || !(print_cnt % 50)) {
+#endif
+      if (!(print_cnt % 100)) {
+	char daddr[INET_ADDRSTRLEN];
+	char saddr[INET_ADDRSTRLEN];
+	struct in_addr in_daddr;
+	struct in_addr in_saddr;
+
+	in_daddr.s_addr = ((struct sockaddr_in *)to)->sin_addr.s_addr;
+	in_saddr.s_addr = ((struct sockaddr_in *)from)->sin_addr.s_addr;
+
+	inet_ntop(AF_INET, &in_daddr, daddr, sizeof(daddr));
+	inet_ntop(AF_INET, &in_saddr, saddr, sizeof(saddr));
+
+      	WARNING("sendto socket %d, saddr=%s, daddr=%s, sport=%d, dport=%d, udp->sport=%d, udp->dport=%d, ret=%d, print_cnt=%d\n",
+			sock, saddr, daddr, sport, dport, ntohs(udp->uh_sport), ntohs(udp->uh_dport), ret, print_cnt);
+      }
     }
     else {
       ret = sendto(sock, buffer, pkt_index->pktlen, MSG_DONTWAIT,
@@ -232,6 +279,7 @@ send_packets (play_args_t * play_args)
                    (struct sockaddr *)(void *) &to6, sizeof(struct sockaddr_in6));
     }
 #endif
+
     if (ret < 0) {
       close(sock);
       WARNING("send_packets.c: sendto failed with error: %s", strerror(errno));
@@ -242,6 +290,7 @@ send_packets (play_args_t * play_args)
     rtp_bytes_pcap += pkt_index->pktlen - sizeof(*udp);
     memcpy (&last, &(pkt_index->ts), sizeof (struct timeval));
     pkt_index++;
+	  print_cnt++;
 	}
 
   /* Closing the socket is handled by pthread_cleanup_push()/pthread_cleanup_pop() */

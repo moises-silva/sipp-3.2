@@ -4992,6 +4992,7 @@ int main(int argc, char *argv[])
       sprintf(msg, "Unable to bind audio RTP socket (IP=%s, port=%d)", media_ip, media_port);
       ERROR_NO(msg);
     }
+    WARNING("Starting SIPP with media %s:%d\n", media_ip, media_port);
 
     /*---------------------------------------------------------
        Bind the second socket to media_port+2 
