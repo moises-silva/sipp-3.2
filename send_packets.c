@@ -160,6 +160,10 @@ send_packets (play_args_t * play_args)
     from_port = &(((struct sockaddr_in *)(void *) from )->sin_port);
     to_port = &(((struct sockaddr_in *)(void *) to )->sin_port);
   }
+
+  if (*from_port == 0) {
+    ERROR("Missing 'from' UDP port for PCAP Play, use [media_port] or [auto_media_port] keywords in your scenario please\n");
+  }
 	
 #ifndef MSG_DONTWAIT
   fd_flags = fcntl(sock, F_GETFL , NULL);
@@ -185,7 +189,6 @@ send_packets (play_args_t * play_args)
    * allows the thread to be cancelled cleanly.
    */
   pthread_cleanup_push(send_packets_cleanup, ((void *) sock));
-
 
   while (pkt_index < pkt_max) {
     memcpy(udp, pkt_index->data, pkt_index->pktlen);
