@@ -123,6 +123,20 @@ unsigned int call::wake() {
 }
 
 #ifdef PCAPPLAY
+static char *find_sdp_eol(char *begin)
+{
+    /* RFC 4566 says parsers SHOULD accept both CRLF and LF as line terminators, so
+     * we bail out as soon as we find either CR or LF */
+    char *end = begin;
+    while (*end) {
+        if (*end == '\r' || *end == '\n') {
+	    return end;
+	}
+	end++;
+    }
+    return NULL;
+}
+
 /******* Media information management *************************/
 /*
  * Look for "c=IN IP4 " pattern in the message and extract the following value
@@ -135,13 +149,16 @@ uint32_t get_remote_ip_media(char *msg)
     char ip[32];
     begin = strstr(msg, pattern);
     if (!begin) {
+      WARNING("Did not find pattern %s in SIP message\n", pattern);
       /* Can't find what we're looking at -> return no address */
       return INADDR_NONE;
     }
     begin += sizeof("c=IN IP4 ") - 1;
-    end = strstr(begin, "\r\n");
-    if (!end)
+    end = find_sdp_eol(begin);
+    if (!end) {
+      WARNING("Did not find CRLF in connection line: '%s'\n", begin);
       return INADDR_NONE;
+    }
     memset(ip, 0, 32);
     strncpy(ip, begin, end - begin);
     return inet_addr(ip);
@@ -166,7 +183,7 @@ uint8_t get_remote_ipv6_media(char *msg, struct in6_addr *addr)
       return 0;
     }
     begin += sizeof("c=IN IP6 ") - 1;
-    end = strstr(begin, "\r\n");
+    end = find_sdp_eol(begin);
     if (!end)
       return 0;
     strncpy(ip, begin, end - begin);
@@ -202,7 +219,7 @@ uint16_t get_remote_port_media(char *msg, int pattype)
       return 0;
     }
     begin += strlen(pattern) - 1;
-    end = strstr(begin, "\r\n");
+    end = find_sdp_eol(begin);
     if (!end)
       ERROR("get_remote_port_media: no CRLF found");
     memset(number, 0, sizeof(number));
