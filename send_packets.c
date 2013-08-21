@@ -93,11 +93,32 @@ float2timer (float time, struct timeval *tvp)
   tvp->tv_usec = n * 100000;
 }
 
+extern char *scenario_file;
 /* buffer should be "file_name" */
 int
 parse_play_args (char *buffer, pcap_pkts *pkts)
 {
-  pkts->file = strdup (buffer);
+  pkts->file = NULL;
+#ifdef __linux__
+  {
+    char *scenario_path = NULL;
+    char *c = NULL;
+    /* Try to be fancy, if file not found, try to find the pcap
+     * in the directory where the scenario is located */
+    if (access(buffer, R_OK) && (errno == ENOENT || errno == ENOTDIR)) {
+      scenario_path = strdup(scenario_file);
+      c = strrchr(scenario_path, '/');
+      if (c) {
+        *c = '\0';
+        asprintf(&pkts->file, "%s/%s", scenario_path, buffer);
+        free(scenario_path);
+      }
+    }
+  }
+#endif
+  if (!pkts->file) {
+    pkts->file = strdup (buffer);
+  }
   prepare_pkts(pkts->file, pkts);
   return 1;
 }
